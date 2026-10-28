@@ -43,6 +43,7 @@ dependencies:
   shared_preferences: ^2.5.6
   logger: ^2.8.0
   adaptive_theme: ^3.8.0
+  flutter_secure_storage: ^11.2.0
 
 dev_dependencies:
   flutter_test:

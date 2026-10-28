@@ -8,7 +8,7 @@ class SafeLoggingInterceptor extends Interceptor {
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    _logger.d('${options.method} ${options.uri}');
+    _logger.d('${options.method} ${_safeUri(options.uri)}');
     handler.next(options);
   }
 
@@ -17,15 +17,19 @@ class SafeLoggingInterceptor extends Interceptor {
     Response<dynamic> response,
     ResponseInterceptorHandler handler,
   ) {
-    _logger.d('${response.statusCode} ${response.requestOptions.uri}');
+    _logger.d(
+      '${response.statusCode} ${_safeUri(response.requestOptions.uri)}',
+    );
     handler.next(response);
   }
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
     _logger.w(
-      '${err.response?.statusCode ?? 'network'} ${err.requestOptions.uri}',
+      '${err.response?.statusCode ?? 'network'} ${_safeUri(err.requestOptions.uri)}',
     );
     handler.next(err);
   }
+
+  String _safeUri(Uri uri) => '${uri.origin}${uri.path}';
 }

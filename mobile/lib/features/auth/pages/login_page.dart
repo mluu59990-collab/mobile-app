@@ -1,19 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../core/network/api_exception.dart';
+import '../../../core/providers/app_providers.dart';
 
 const _pink = Color(0xFFEE6F8E);
 
-class LoginPage extends StatefulWidget {
+class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
+
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  ConsumerState<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends ConsumerState<LoginPage> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _remember = true;
   bool _hidePassword = true;
+  bool _submitting = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -27,10 +34,7 @@ class _LoginPageState extends State<LoginPage> {
     backgroundColor: const Color(0xFFFFF7F8),
     appBar: AppBar(
       backgroundColor: const Color(0xFFFFF7F8),
-      leading: IconButton(
-        onPressed: () => context.go('/welcome'),
-        icon: const Icon(Icons.chevron_left),
-      ),
+      automaticallyImplyLeading: false,
     ),
     body: SafeArea(
       child: ListView(
@@ -50,12 +54,16 @@ class _LoginPageState extends State<LoginPage> {
           TextField(
             controller: _email,
             keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.username, AutofillHints.email],
+            textInputAction: TextInputAction.next,
             decoration: _decoration('Email', Icons.mail_outline),
           ),
           const SizedBox(height: 10),
           TextField(
             controller: _password,
             obscureText: _hidePassword,
+            autofillHints: const [AutofillHints.password],
+            onSubmitted: (_) => _login(),
             decoration: _decoration('Mật khẩu', Icons.lock_outline).copyWith(
               suffixIcon: IconButton(
                 onPressed: () => setState(() => _hidePassword = !_hidePassword),
@@ -91,19 +99,34 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ],
           ),
+          if (_error case final error?) ...[
+            const SizedBox(height: 8),
+            Text(
+              error,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
           const SizedBox(height: 15),
           SizedBox(
             height: 49,
             child: FilledButton(
-              onPressed: _notReady,
+              onPressed: _submitting ? null : _login,
               style: FilledButton.styleFrom(
                 backgroundColor: _pink,
                 shape: const StadiumBorder(),
               ),
-              child: const Text(
-                'Đăng nhập',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
+              child: _submitting
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'Đăng nhập',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
             ),
           ),
           const SizedBox(height: 22),
@@ -147,7 +170,7 @@ class _LoginPageState extends State<LoginPage> {
                   style: TextStyle(fontSize: 11, color: Colors.black54),
                 ),
                 GestureDetector(
-                  onTap: _notReady,
+                  onTap: () => context.push('/register'),
                   child: const Text(
                     'Đăng ký',
                     style: TextStyle(
@@ -181,10 +204,27 @@ class _LoginPageState extends State<LoginPage> {
     ),
   );
 
+  Future<void> _login() async {
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(authRepositoryProvider)
+          .login(email: _email.text, password: _password.text);
+      if (mounted) context.go('/home');
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Không thể đăng nhập lúc này.');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   void _notReady() => ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('Đăng nhập sẽ được kết nối với API ở bước tích hợp auth.'),
-    ),
+    const SnackBar(content: Text('Tính năng này chưa được kết nối.')),
   );
 }
 
@@ -197,6 +237,7 @@ class _SocialButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) => OutlinedButton.icon(
     onPressed: onTap,

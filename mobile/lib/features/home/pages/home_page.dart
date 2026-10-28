@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../core/providers/app_providers.dart';
 
 const _pink = Color(0xFFEE6F8E);
 const _ink = Color(0xFF25222A);
@@ -15,13 +19,26 @@ class HomePage extends ConsumerStatefulWidget {
 class _HomePageState extends ConsumerState<HomePage> {
   int _tab = 0;
 
+  Future<void> _logout() async {
+    try {
+      await ref.read(authRepositoryProvider).logout();
+    } catch (_) {
+      // Local session state is still cleared by the repository.
+    } finally {
+      if (mounted) context.go('/login');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
       const _DashboardTab(),
       const _HistoryTab(),
       const _ReportTab(),
-      _ProfileTab(onSettings: () => context.push('/settings')),
+      _ProfileTab(
+        onSettings: () => context.push('/settings'),
+        onLogout: _logout,
+      ),
     ];
     return Scaffold(
       backgroundColor: const Color(0xFFFFF9FA),
@@ -528,8 +545,9 @@ class _ReportTab extends StatelessWidget {
 }
 
 class _ProfileTab extends StatelessWidget {
-  const _ProfileTab({required this.onSettings});
+  const _ProfileTab({required this.onSettings, required this.onLogout});
   final VoidCallback onSettings;
+  final Future<void> Function() onLogout;
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.fromLTRB(18, 24, 18, 24),
@@ -610,6 +628,11 @@ class _ProfileTab extends StatelessWidget {
               icon: Icons.info_outline,
               label: 'Về ứng dụng',
               onTap: () {},
+            ),
+            _ProfileItem(
+              icon: Icons.logout,
+              label: 'Đăng xuất',
+              onTap: () => unawaited(onLogout()),
             ),
           ],
         ),
@@ -989,12 +1012,19 @@ class _ProfileItem extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => ListTile(
-    dense: true,
-    contentPadding: EdgeInsets.zero,
-    leading: Icon(icon, size: 20, color: _ink),
-    title: Text(label, style: const TextStyle(fontSize: 13)),
-    trailing: const Icon(Icons.chevron_right, size: 18, color: Colors.black45),
-    onTap: onTap,
+  Widget build(BuildContext context) => Material(
+    color: Colors.transparent,
+    child: ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, size: 20, color: _ink),
+      title: Text(label, style: const TextStyle(fontSize: 13)),
+      trailing: const Icon(
+        Icons.chevron_right,
+        size: 18,
+        color: Colors.black45,
+      ),
+      onTap: onTap,
+    ),
   );
 }
