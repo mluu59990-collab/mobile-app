@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
+	"expense-app/backend/internal/apierror"
 	"expense-app/backend/internal/auth"
 	"expense-app/backend/internal/config"
 	"expense-app/backend/internal/handler"
@@ -53,17 +55,43 @@ func run() error {
 	authService.SetFacebookVerifier(service.FacebookGraphVerifier{
 		AppID: authConfig.FacebookAppID, AppSecret: authConfig.FacebookAppSecret,
 	})
-	router := gin.Default()
-	if err := router.SetTrustedProxies(nil); err != nil {
+	router, err := newRouter(
+		authService,
+		service.NewExpenseService(repository.NewExpenses(db)),
+		service.NewMonthlyReportService(repository.NewReports(db)),
+		tokens,
+	)
+	if err != nil {
 		return err
 	}
-	handler.RegisterAuth(router, authService, tokens)
-	handler.RegisterExpenseRoutes(router, service.NewExpenseService(repository.NewExpenses(db)), tokens)
-	handler.RegisterReportRoutes(router, service.NewMonthlyReportService(repository.NewReports(db)), tokens)
-	router.GET("/api/v1/health", handler.Health)
 
-	if err := router.Run(cfg.HTTPAddr); err != nil {
+	server := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		return fmt.Errorf("start server: %w", err)
 	}
 	return nil
+}
+
+func newRouter(authService *service.Auth, expenseService *service.ExpenseService, reportService *service.MonthlyReportService, tokens auth.Tokens) (*gin.Engine, error) {
+	router := gin.New()
+	router.Use(gin.Logger(), gin.Recovery())
+	router.HandleMethodNotAllowed = true
+	router.NoRoute(func(c *gin.Context) {
+		apierror.Write(c, http.StatusNotFound, "route_not_found", "Route not found")
+	})
+	router.NoMethod(func(c *gin.Context) {
+		apierror.Write(c, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
+	})
+	if err := router.SetTrustedProxies(nil); err != nil {
+		return nil, err
+	}
+	handler.RegisterAuth(router, authService, tokens)
+	handler.RegisterExpenseRoutes(router, expenseService, tokens)
+	handler.RegisterReportRoutes(router, reportService, tokens)
+	router.GET("/api/v1/health", handler.Health)
+	return router, nil
 }

@@ -16,5 +16,24 @@ services:
       timeout: 5s
       retries: 5
 
+  test-db:
+    image: postgres:17
+    profiles: ["integration"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-expense_app_test}
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-expense_app_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:?Set POSTGRES_TEST_PASSWORD for the isolated test database}
+      TZ: UTC
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres_data:
+  postgres_test_data:

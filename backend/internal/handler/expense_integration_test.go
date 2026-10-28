@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -86,6 +87,38 @@ func TestExpenseOwnershipAndCRUDPostgres(t *testing.T) {
 	}
 	if created.ID == "" || created.Amount != 25000 || created.Note == nil || *created.Note != "coffee" {
 		t.Fatalf("unexpected created expense: %+v", created)
+	}
+	var manualExpense model.Expense
+	if err := db.WithContext(ctx).Where("id = ?", created.ID).Take(&manualExpense).Error; err != nil {
+		t.Fatal(err)
+	}
+	if manualExpense.Source != "manual" {
+		t.Fatalf("default source = %q, want manual", manualExpense.Source)
+	}
+
+	imageURL := "https://example.test/receipts/receipt.png"
+	rawAIResult := json.RawMessage(`{"merchant":"Test Store","total":25000}`)
+	metadataExpense := model.Expense{
+		ID: uuid.NewString(), UserID: users[0].ID, Amount: 25000,
+		ImageURL: &imageURL, Source: "receipt_ai", RawAIResult: rawAIResult,
+		SpentAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	if err := db.WithContext(ctx).Create(&metadataExpense).Error; err != nil {
+		t.Fatalf("create expense with migration metadata: %v", err)
+	}
+	var loadedMetadata model.Expense
+	if err := db.WithContext(ctx).Where("id = ?", metadataExpense.ID).Take(&loadedMetadata).Error; err != nil {
+		t.Fatalf("load expense with migration metadata: %v", err)
+	}
+	var gotAIResult, wantAIResult any
+	if err := json.Unmarshal(loadedMetadata.RawAIResult, &gotAIResult); err != nil {
+		t.Fatalf("decode stored raw AI result: %v", err)
+	}
+	if err := json.Unmarshal(rawAIResult, &wantAIResult); err != nil {
+		t.Fatalf("decode expected raw AI result: %v", err)
+	}
+	if loadedMetadata.ImageURL == nil || *loadedMetadata.ImageURL != imageURL || loadedMetadata.Source != "receipt_ai" || !reflect.DeepEqual(gotAIResult, wantAIResult) {
+		t.Fatalf("expense migration metadata did not round-trip: %+v", loadedMetadata)
 	}
 
 	userBExpense := request(http.MethodPost, "/api/v1/expenses", userBToken, `{"amount":99000,"spent_at":"2025-06-01T00:00:00Z"}`)

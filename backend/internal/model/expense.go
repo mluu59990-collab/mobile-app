@@ -1,16 +1,22 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Expense struct {
-	ID        string `gorm:"type:uuid;primaryKey"`
-	UserID    string `gorm:"type:uuid;not null"`
-	Amount    int64
-	Note      *string
-	Category  *string
-	SpentAt   time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID          string `gorm:"type:uuid;primaryKey"`
+	UserID      string `gorm:"type:uuid;not null"`
+	Amount      int64
+	Note        *string
+	Category    *string
+	ImageURL    *string
+	Source      string          `gorm:"not null;default:manual"`
+	RawAIResult json.RawMessage `gorm:"type:jsonb;serializer:json"`
+	SpentAt     time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 func (Expense) TableName() string { return "expenses" }
