@@ -8,7 +8,7 @@ import (
 )
 
 type ReportRepository interface {
-	MonthlyExpenseReport(context.Context, string, time.Time, time.Time) (model.MonthlyExpenseReport, error)
+	MonthlyExpenseReport(context.Context, string, time.Time, time.Time, string) (model.MonthlyExpenseReport, error)
 }
 
 type MonthlyReportService struct{ repo ReportRepository }
@@ -17,12 +17,12 @@ func NewMonthlyReportService(repo ReportRepository) *MonthlyReportService {
 	return &MonthlyReportService{repo: repo}
 }
 
-func (s *MonthlyReportService) Monthly(ctx context.Context, userID, month string) (model.MonthlyExpenseReport, error) {
-	start, end, err := monthRange(month)
+func (s *MonthlyReportService) Monthly(ctx context.Context, userID, month, timezone string) (model.MonthlyExpenseReport, error) {
+	start, end, location, err := monthRange(month, timezone)
 	if err != nil {
 		return model.MonthlyExpenseReport{}, err
 	}
-	report, err := s.repo.MonthlyExpenseReport(ctx, userID, start, end)
+	report, err := s.repo.MonthlyExpenseReport(ctx, userID, start, end, location.String())
 	if err != nil {
 		return model.MonthlyExpenseReport{}, err
 	}

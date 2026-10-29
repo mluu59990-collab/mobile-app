@@ -21,6 +21,7 @@ type expenseResponse struct {
 	Amount    int64     `json:"amount"`
 	Note      *string   `json:"note"`
 	Category  *string   `json:"category"`
+	ImageURL  *string   `json:"image_url"`
 	SpentAt   time.Time `json:"spent_at"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -31,6 +32,7 @@ type createExpenseRequest struct {
 	Note     *string    `json:"note" binding:"omitempty,max=2000"`
 	Category *string    `json:"category" binding:"omitempty,max=100"`
 	SpentAt  *time.Time `json:"spent_at"`
+	ImageKey *string    `json:"image_key"`
 }
 
 type updateExpenseRequest struct {
@@ -38,6 +40,7 @@ type updateExpenseRequest struct {
 	Note     *string    `json:"note" binding:"omitempty,max=2000"`
 	Category *string    `json:"category" binding:"omitempty,max=100"`
 	SpentAt  *time.Time `json:"spent_at"`
+	ImageKey *string    `json:"image_key"`
 }
 
 func RegisterExpenseRoutes(router *gin.Engine, svc *service.ExpenseService, tokens auth.Tokens) {
@@ -61,24 +64,34 @@ func (h *Expense) create(c *gin.Context) {
 		return
 	}
 	expense, err := h.service.Create(c.Request.Context(), c.GetString(middleware.UserIDKey), service.CreateExpenseInput{
-		Amount: req.Amount, Note: req.Note, Category: req.Category, SpentAt: req.SpentAt,
+		Amount: req.Amount, Note: req.Note, Category: req.Category, SpentAt: req.SpentAt, ImageKey: req.ImageKey,
 	})
 	if err != nil {
 		expenseError(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, expenseView(expense))
+	view, err := h.expenseView(c, expense)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, view)
 }
 
 func (h *Expense) list(c *gin.Context) {
-	expenses, err := h.service.List(c.Request.Context(), c.GetString(middleware.UserIDKey), c.Query("month"))
+	expenses, err := h.service.List(c.Request.Context(), c.GetString(middleware.UserIDKey), c.Query("month"), c.Query("tz"))
 	if err != nil {
 		expenseError(c, err)
 		return
 	}
 	result := make([]expenseResponse, 0, len(expenses))
 	for _, expense := range expenses {
-		result = append(result, expenseView(expense))
+		view, err := h.expenseView(c, expense)
+		if err != nil {
+			respondError(c, err)
+			return
+		}
+		result = append(result, view)
 	}
 	c.JSON(http.StatusOK, gin.H{"expenses": result})
 }
@@ -93,7 +106,12 @@ func (h *Expense) get(c *gin.Context) {
 		expenseError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, expenseView(expense))
+	view, err := h.expenseView(c, expense)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, view)
 }
 
 func (h *Expense) update(c *gin.Context) {
@@ -106,13 +124,18 @@ func (h *Expense) update(c *gin.Context) {
 		return
 	}
 	expense, err := h.service.Update(c.Request.Context(), c.GetString(middleware.UserIDKey), id, service.UpdateExpenseInput{
-		Amount: req.Amount, Note: req.Note, Category: req.Category, SpentAt: req.SpentAt,
+		Amount: req.Amount, Note: req.Note, Category: req.Category, SpentAt: req.SpentAt, ImageKey: req.ImageKey,
 	})
 	if err != nil {
 		expenseError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, expenseView(expense))
+	view, err := h.expenseView(c, expense)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, view)
 }
 
 func (h *Expense) delete(c *gin.Context) {
@@ -136,17 +159,27 @@ func expenseID(c *gin.Context) (string, bool) {
 	return id.String(), true
 }
 
-func expenseView(expense model.Expense) expenseResponse {
+func (h *Expense) expenseView(c *gin.Context, expense model.Expense) (expenseResponse, error) {
+	imageURL, err := h.service.SignedImageURL(c.Request.Context(), expense.ImageKey)
+	if err != nil {
+		return expenseResponse{}, err
+	}
 	return expenseResponse{
 		ID: expense.ID, Amount: expense.Amount, Note: expense.Note, Category: expense.Category,
-		SpentAt: expense.SpentAt, CreatedAt: expense.CreatedAt, UpdatedAt: expense.UpdatedAt,
-	}
+		ImageURL: imageURL, SpentAt: expense.SpentAt, CreatedAt: expense.CreatedAt, UpdatedAt: expense.UpdatedAt,
+	}, nil
 }
 
 func expenseError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrInvalidInput), errors.Is(err, service.ErrInvalidMonth):
-		apierror.Write(c, http.StatusBadRequest, "invalid_request", "Invalid expense fields or month; month must use YYYY-MM in UTC")
+		apierror.Write(c, http.StatusBadRequest, "invalid_request", "Invalid expense fields or month; month must use YYYY-MM")
+	case errors.Is(err, service.ErrInvalidTimezone):
+		apierror.Write(c, http.StatusBadRequest, "invalid_timezone", "Query tz must be a valid IANA time zone")
+	case errors.Is(err, service.ErrInvalidImage), errors.Is(err, service.ErrInvalidImageKey):
+		apierror.Write(c, http.StatusBadRequest, "invalid_image", "Image upload is invalid or unavailable")
+	case errors.Is(err, service.ErrImageStorageUnavailable):
+		apierror.Write(c, http.StatusServiceUnavailable, "image_storage_unavailable", "Image storage is not configured")
 	case errors.Is(err, model.ErrExpenseNotFound):
 		apierror.Write(c, http.StatusNotFound, "expense_not_found", "Expense not found")
 	default:

@@ -11,7 +11,8 @@ type Expense struct {
 	Amount      int64
 	Note        *string
 	Category    *string
-	ImageURL    *string
+	ImageKey    *string
+	ImageURL    *string         `gorm:"-"`
 	Source      string          `gorm:"not null;default:manual"`
 	RawAIResult json.RawMessage `gorm:"type:jsonb;serializer:json"`
 	SpentAt     time.Time

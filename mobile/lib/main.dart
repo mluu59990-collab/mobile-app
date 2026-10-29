@@ -7,11 +7,13 @@ import 'core/providers/app_providers.dart';
 import 'core/providers/auth_session.dart';
 import 'core/router/app_router.dart';
 import 'core/storage/token_storage.dart';
+import 'core/timezone/device_timezone.dart';
 import 'core/ui/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final preferences = await SharedPreferences.getInstance();
+  final deviceTimezone = await DeviceTimezone.load();
   final tokenStorage = TokenStorage();
   var isAuthenticated = false;
   try {
@@ -26,6 +28,7 @@ Future<void> main() async {
         sharedPreferencesProvider.overrideWithValue(preferences),
         tokenStorageProvider.overrideWithValue(tokenStorage),
         authSessionProvider.overrideWithValue(authSession),
+        deviceTimezoneProvider.overrideWithValue(deviceTimezone),
       ],
       child: const ExpenseApp(),
     ),

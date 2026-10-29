@@ -44,6 +44,7 @@ dependencies:
   logger: ^2.8.0
   adaptive_theme: ^3.8.0
   flutter_secure_storage: ^11.2.0
+  flutter_timezone: ^5.1.1
 
 dev_dependencies:
   flutter_test:

@@ -1,17 +1,36 @@
 package service
 
 import (
+	"errors"
 	"time"
+	_ "time/tzdata"
 )
 
-func monthRange(month string) (time.Time, time.Time, error) {
-	if len(month) != len("2006-01") {
-		return time.Time{}, time.Time{}, ErrInvalidMonth
+var ErrInvalidTimezone = errors.New("invalid timezone")
+
+func timezoneLocation(timezone string) (*time.Location, error) {
+	if timezone == "" {
+		timezone = "UTC"
 	}
-	start, err := time.Parse("2006-01", month)
+	location, err := time.LoadLocation(timezone)
 	if err != nil {
-		return time.Time{}, time.Time{}, ErrInvalidMonth
+		return nil, ErrInvalidTimezone
 	}
-	start = start.UTC()
-	return start, start.AddDate(0, 1, 0), nil
+	return location, nil
+}
+
+func monthRange(month, timezone string) (time.Time, time.Time, *time.Location, error) {
+	location, err := timezoneLocation(timezone)
+	if err != nil {
+		return time.Time{}, time.Time{}, nil, err
+	}
+	if len(month) != len("2006-01") {
+		return time.Time{}, time.Time{}, nil, ErrInvalidMonth
+	}
+	parsed, err := time.ParseInLocation("2006-01", month, location)
+	if err != nil || parsed.Format("2006-01") != month {
+		return time.Time{}, time.Time{}, nil, ErrInvalidMonth
+	}
+	start := time.Date(parsed.Year(), parsed.Month(), 1, 0, 0, 0, 0, location)
+	return start.UTC(), start.AddDate(0, 1, 0).UTC(), location, nil
 }

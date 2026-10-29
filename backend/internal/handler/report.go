@@ -14,7 +14,8 @@ import (
 type Report struct{ service *service.MonthlyReportService }
 
 type monthlyReportQuery struct {
-	Month string `form:"month" binding:"required"`
+	Month    string `form:"month" binding:"required"`
+	Timezone string `form:"tz"`
 }
 
 type categoryReportItem struct {
@@ -47,9 +48,13 @@ func (h *Report) monthly(c *gin.Context) {
 		apierror.Write(c, http.StatusBadRequest, "invalid_request", "Query month is required in YYYY-MM format")
 		return
 	}
-	report, err := h.service.Monthly(c.Request.Context(), c.GetString(middleware.UserIDKey), query.Month)
+	report, err := h.service.Monthly(c.Request.Context(), c.GetString(middleware.UserIDKey), query.Month, query.Timezone)
 	if errors.Is(err, service.ErrInvalidMonth) {
-		apierror.Write(c, http.StatusBadRequest, "invalid_request", "Query month must be a valid YYYY-MM month in UTC")
+		apierror.Write(c, http.StatusBadRequest, "invalid_request", "Query month must be a valid YYYY-MM month")
+		return
+	}
+	if errors.Is(err, service.ErrInvalidTimezone) {
+		apierror.Write(c, http.StatusBadRequest, "invalid_timezone", "Query tz must be a valid IANA time zone")
 		return
 	}
 	if err != nil {

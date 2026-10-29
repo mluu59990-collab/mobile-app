@@ -13,6 +13,7 @@ import (
 	"expense-app/backend/internal/handler"
 	"expense-app/backend/internal/repository"
 	"expense-app/backend/internal/service"
+	"expense-app/backend/internal/storage"
 
 	"github.com/gin-gonic/gin"
 )
@@ -55,9 +56,23 @@ func run() error {
 	authService.SetFacebookVerifier(service.FacebookGraphVerifier{
 		AppID: authConfig.FacebookAppID, AppSecret: authConfig.FacebookAppSecret,
 	})
+	expenseRepository := repository.NewExpenses(db)
+	expenseService := service.NewExpenseService(expenseRepository)
+	if cfg.R2Enabled {
+		imageStorage, err := storage.NewR2(context.Background(), storage.R2Config{
+			AccountID: cfg.R2AccountID, AccessKey: cfg.R2AccessKeyID,
+			SecretKey: cfg.R2SecretAccessKey, Bucket: cfg.R2Bucket,
+		})
+		if err != nil {
+			return fmt.Errorf("configure R2 image storage: %w", err)
+		}
+		expenseService = service.NewExpenseServiceWithImages(expenseRepository, imageStorage, service.ExpenseImageConfig{
+			PutURLTTL: cfg.R2PutURLTTL, GetURLTTL: cfg.R2GetURLTTL,
+		})
+	}
 	router, err := newRouter(
 		authService,
-		service.NewExpenseService(repository.NewExpenses(db)),
+		expenseService,
 		service.NewMonthlyReportService(repository.NewReports(db)),
 		tokens,
 	)
@@ -91,6 +106,7 @@ func newRouter(authService *service.Auth, expenseService *service.ExpenseService
 	}
 	handler.RegisterAuth(router, authService, tokens)
 	handler.RegisterExpenseRoutes(router, expenseService, tokens)
+	handler.RegisterUploadRoutes(router, expenseService, tokens)
 	handler.RegisterReportRoutes(router, reportService, tokens)
 	router.GET("/api/v1/health", handler.Health)
 	return router, nil

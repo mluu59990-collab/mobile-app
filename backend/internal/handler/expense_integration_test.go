@@ -96,15 +96,19 @@ func TestExpenseOwnershipAndCRUDPostgres(t *testing.T) {
 		t.Fatalf("default source = %q, want manual", manualExpense.Source)
 	}
 
-	imageURL := "https://example.test/receipts/receipt.png"
+	imageKey := "users/" + users[0].ID + "/legacy/receipt.png"
 	rawAIResult := json.RawMessage(`{"merchant":"Test Store","total":25000}`)
 	metadataExpense := model.Expense{
 		ID: uuid.NewString(), UserID: users[0].ID, Amount: 25000,
-		ImageURL: &imageURL, Source: "receipt_ai", RawAIResult: rawAIResult,
+		ImageKey: &imageKey, Source: "receipt_ai", RawAIResult: rawAIResult,
 		SpentAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
 	if err := db.WithContext(ctx).Create(&metadataExpense).Error; err != nil {
 		t.Fatalf("create expense with migration metadata: %v", err)
+	}
+	legacyImageURL := "https://legacy.example.test/should-not-be-read.png"
+	if err := db.WithContext(ctx).Exec("UPDATE expenses SET image_url = ? WHERE id = ?", legacyImageURL, metadataExpense.ID).Error; err != nil {
+		t.Fatalf("set legacy image_url column for ignored-field assertion: %v", err)
 	}
 	var loadedMetadata model.Expense
 	if err := db.WithContext(ctx).Where("id = ?", metadataExpense.ID).Take(&loadedMetadata).Error; err != nil {
@@ -117,7 +121,7 @@ func TestExpenseOwnershipAndCRUDPostgres(t *testing.T) {
 	if err := json.Unmarshal(rawAIResult, &wantAIResult); err != nil {
 		t.Fatalf("decode expected raw AI result: %v", err)
 	}
-	if loadedMetadata.ImageURL == nil || *loadedMetadata.ImageURL != imageURL || loadedMetadata.Source != "receipt_ai" || !reflect.DeepEqual(gotAIResult, wantAIResult) {
+	if loadedMetadata.ImageKey == nil || *loadedMetadata.ImageKey != imageKey || loadedMetadata.ImageURL != nil || loadedMetadata.Source != "receipt_ai" || !reflect.DeepEqual(gotAIResult, wantAIResult) {
 		t.Fatalf("expense migration metadata did not round-trip: %+v", loadedMetadata)
 	}
 
@@ -175,6 +179,25 @@ func TestExpenseOwnershipAndCRUDPostgres(t *testing.T) {
 		t.Fatalf("month boundary included prior month expense: %+v", juneList)
 	}
 	checkStatus(request(http.MethodGet, "/api/v1/expenses?month=2025-13", userAToken, ""), http.StatusBadRequest)
+	boundaryAt := "2026-10-31T17:30:00Z"
+	checkStatus(request(http.MethodPost, "/api/v1/expenses", userAToken, `{"amount":1234,"spent_at":"`+boundaryAt+`"}`), http.StatusCreated)
+	for _, path := range []string{"/api/v1/expenses?month=2026-11&tz=Asia%2FHo_Chi_Minh", "/api/v1/expenses?month=2026-10"} {
+		got := request(http.MethodGet, path, userAToken, "")
+		checkStatus(got, http.StatusOK)
+		var result struct {
+			Expenses []expenseResponse `json:"expenses"`
+		}
+		if err := json.Unmarshal(got.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Expenses) != 1 || result.Expenses[0].SpentAt.UTC().Format(time.RFC3339) != boundaryAt {
+			t.Fatalf("timezone month %s did not include expected boundary expense: %+v", path, result.Expenses)
+		}
+	}
+	badTimezone := request(http.MethodGet, "/api/v1/expenses?month=2026-11&tz=Not%2FA_Timezone", userAToken, "")
+	if badTimezone.Code != http.StatusBadRequest || !strings.Contains(badTimezone.Body.String(), `"error"`) {
+		t.Fatalf("invalid timezone should return error envelope 400, got %d: %s", badTimezone.Code, badTimezone.Body.String())
+	}
 	checkStatus(request(http.MethodGet, "/api/v1/expenses/not-a-uuid", userAToken, ""), http.StatusBadRequest)
 	checkStatus(request(http.MethodGet, "/api/v1/expenses", "", ""), http.StatusUnauthorized)
 

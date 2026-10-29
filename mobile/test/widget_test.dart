@@ -1,5 +1,7 @@
 import 'package:expense_app/core/providers/app_providers.dart';
 import 'package:expense_app/core/providers/auth_session.dart';
+import 'package:expense_app/features/expense/data/monthly_report.dart';
+import 'package:expense_app/features/expense/providers/expense_providers.dart';
 import 'package:expense_app/main.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,6 +34,17 @@ void main() {
         overrides: [
           sharedPreferencesProvider.overrideWithValue(preferences),
           authSessionProvider.overrideWithValue(authSession),
+          expensesForSelectedMonthProvider.overrideWith(
+            (ref) async => const [],
+          ),
+          monthlyReportProvider.overrideWith(
+            (ref) async => const MonthlyReport(
+              month: '2026-10',
+              totalAmount: 0,
+              byCategory: [],
+              byDay: [],
+            ),
+          ),
         ],
         child: const ExpenseApp(),
       ),

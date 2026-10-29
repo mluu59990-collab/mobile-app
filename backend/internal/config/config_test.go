@@ -33,6 +33,23 @@ func TestLoadEscapesCredentials(t *testing.T) {
 	}
 }
 
+func TestLoadR2SettingsAndTTLs(t *testing.T) {
+	t.Setenv("POSTGRES_PASSWORD", "test")
+	t.Setenv("R2_ACCOUNT_ID", "account")
+	t.Setenv("R2_ACCESS_KEY_ID", "access")
+	t.Setenv("R2_SECRET_ACCESS_KEY", "secret")
+	t.Setenv("R2_BUCKET", "private-images")
+	t.Setenv("R2_PUT_URL_TTL", "10m")
+	t.Setenv("R2_GET_URL_TTL", "15m")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.R2Enabled || cfg.R2PutURLTTL.String() != "10m0s" || cfg.R2GetURLTTL.String() != "15m0s" {
+		t.Fatalf("unexpected R2 config: %+v", cfg)
+	}
+}
+
 func TestAuthConfig(t *testing.T) {
 	t.Setenv("JWT_SECRET", "")
 	if _, err := LoadAuth(); err == nil {

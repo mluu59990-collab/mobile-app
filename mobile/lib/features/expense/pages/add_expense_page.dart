@@ -1,288 +1,207 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../../core/formatters/local_datetime_formatter.dart';
+import '../data/expense.dart';
+import '../providers/expense_providers.dart';
 
 const _pink = Color(0xFFEE6F8E);
 
-class AddExpensePage extends StatefulWidget {
-  const AddExpensePage({super.key});
+class AddExpensePage extends ConsumerStatefulWidget {
+  const AddExpensePage({super.key, this.expenseId});
+  final String? expenseId;
+
   @override
-  State<AddExpensePage> createState() => _AddExpensePageState();
+  ConsumerState<AddExpensePage> createState() => _AddExpensePageState();
 }
 
-class _AddExpensePageState extends State<AddExpensePage> {
-  String _category = 'Ăn uống';
-  bool _showSaved = false;
+class _AddExpensePageState extends ConsumerState<AddExpensePage> {
   final _amount = TextEditingController();
-  final _name = TextEditingController();
   final _note = TextEditingController();
+  String _category = 'food';
+  DateTime _spentAt = DateTime.now();
+  bool _saving = false;
+  bool _initialized = false;
+  String? _error;
 
   @override
   void dispose() {
     _amount.dispose();
-    _name.dispose();
     _note.dispose();
     super.dispose();
   }
 
+  void _fill(Expense expense) {
+    if (_initialized) return;
+    _initialized = true;
+    _amount.text = expense.amount.toString();
+    _note.text = expense.note ?? '';
+    _category = expense.category ?? 'other';
+    _spentAt = expense.spentAt.toLocal();
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFFFF9FA),
-    appBar: AppBar(
+  Widget build(BuildContext context) {
+    final edit = widget.expenseId != null;
+    if (!edit) _initialized = true;
+    final expenseAsync = edit
+        ? ref.watch(expenseByIdProvider(widget.expenseId!))
+        : null;
+    expenseAsync?.whenData(_fill);
+    return Scaffold(
       backgroundColor: const Color(0xFFFFF9FA),
-      leading: IconButton(
-        onPressed: () => context.pop(),
-        icon: const Icon(Icons.close),
-      ),
-      title: const Text(
-        'Thêm chi tiêu',
-        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-      ),
-      centerTitle: true,
-      actions: [
-        TextButton(
-          onPressed: _save,
-          child: const Text(
-            'Lưu',
-            style: TextStyle(color: _pink, fontWeight: FontWeight.w700),
+      appBar: AppBar(
+        title: Text(edit ? 'Sửa chi tiêu' : 'Thêm chi tiêu'),
+        centerTitle: true,
+        actions: [
+          TextButton(
+            onPressed: _saving ? null : _save,
+            child: const Text('Lưu'),
           ),
-        ),
-      ],
-    ),
-    body: SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
-        children: [
-          InkWell(
-            onTap: () {},
-            borderRadius: BorderRadius.circular(18),
-            child: Container(
-              height: 92,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFFFDCE4)),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.camera_alt_outlined, color: _pink, size: 27),
-                  SizedBox(height: 6),
-                  Text(
-                    'Thêm ảnh món đồ (tùy chọn)',
-                    style: TextStyle(fontSize: 12, color: Colors.black54),
+        ],
+      ),
+      body: edit && (expenseAsync?.isLoading ?? false)
+          ? const Center(child: CircularProgressIndicator())
+          : edit && (expenseAsync?.hasError ?? false)
+          ? _loadError(
+              expenseAsync?.error.toString() ?? 'Không tải được chi tiêu.',
+            )
+          : SafeArea(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+                children: [
+                  TextField(
+                    controller: _amount,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      labelText: 'Số tiền (VND)',
+                      suffixText: '₫',
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text('Danh mục'),
+                  Wrap(
+                    spacing: 8,
+                    children: expenseCategories
+                        .map(
+                          (category) => ChoiceChip(
+                            label: Text(category.label),
+                            avatar: Icon(category.icon, size: 18),
+                            selected: _category == category.key,
+                            onSelected: (_) =>
+                                setState(() => _category = category.key),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  TextField(
+                    controller: _note,
+                    decoration: const InputDecoration(
+                      labelText: 'Tên giao dịch',
+                      hintText: 'Ví dụ: Cà phê',
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Ngày và giờ'),
+                    subtitle: Text(formatLocalDateTime(_spentAt)),
+                    trailing: const Icon(Icons.calendar_today_outlined),
+                    onTap: _pickDateTime,
+                  ),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: _saving ? null : _save,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _pink,
+                      minimumSize: const Size.fromHeight(50),
+                    ),
+                    child: Text(_saving ? 'Đang lưu…' : 'Lưu chi tiêu'),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _amount,
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700),
-            decoration: InputDecoration(
-              hintText: '0 đ',
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          const Text(
-            'Danh mục',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 9,
-            runSpacing: 9,
-            children: [
-              _CategoryChip(
-                label: 'Ăn uống',
-                icon: Icons.restaurant,
-                selected: _category == 'Ăn uống',
-                onTap: () => setState(() => _category = 'Ăn uống'),
-              ),
-              _CategoryChip(
-                label: 'Đồ uống',
-                icon: Icons.local_cafe,
-                selected: _category == 'Đồ uống',
-                onTap: () => setState(() => _category = 'Đồ uống'),
-              ),
-              _CategoryChip(
-                label: 'Mua sắm',
-                icon: Icons.shopping_bag,
-                selected: _category == 'Mua sắm',
-                onTap: () => setState(() => _category = 'Mua sắm'),
-              ),
-              _CategoryChip(
-                label: 'Di chuyển',
-                icon: Icons.directions_car,
-                selected: _category == 'Di chuyển',
-                onTap: () => setState(() => _category = 'Di chuyển'),
-              ),
-              _CategoryChip(
-                label: 'Hóa đơn',
-                icon: Icons.receipt_long,
-                selected: _category == 'Hóa đơn',
-                onTap: () => setState(() => _category = 'Hóa đơn'),
-              ),
-              _CategoryChip(
-                label: 'Giải trí',
-                icon: Icons.movie,
-                selected: _category == 'Giải trí',
-                onTap: () => setState(() => _category = 'Giải trí'),
-              ),
-              _CategoryChip(
-                label: 'Sức khỏe',
-                icon: Icons.favorite,
-                selected: _category == 'Sức khỏe',
-                onTap: () => setState(() => _category = 'Sức khỏe'),
-              ),
-              _CategoryChip(
-                label: 'Khác',
-                icon: Icons.more_horiz,
-                selected: _category == 'Khác',
-                onTap: () => setState(() => _category = 'Khác'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _FormLabel(
-            label: 'Tên giao dịch',
-            child: TextField(
-              controller: _name,
-              decoration: _input('Ví dụ: Cà phê Highlands'),
-            ),
-          ),
-          const SizedBox(height: 14),
-          _FormLabel(
-            label: 'Ngày',
-            child: TextField(
-              readOnly: true,
-              controller: TextEditingController(text: '12/10/2024 14:30'),
-              decoration: _input('Ngày giao dịch').copyWith(
-                prefixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          _FormLabel(
-            label: 'Ghi chú (tùy chọn)',
-            child: TextField(
-              controller: _note,
-              decoration: _input('Thêm ghi chú...'),
-            ),
-          ),
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: _save,
-            style: FilledButton.styleFrom(
-              backgroundColor: _pink,
-              minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-            child: const Text(
-              'Lưu chi tiêu',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-          if (_showSaved)
-            const Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: Text(
-                'Đã lưu bản xem trước (chưa kết nối API).',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: _pink, fontSize: 12),
-              ),
-            ),
-        ],
-      ),
-    ),
-  );
-
-  InputDecoration _input(String hint) => InputDecoration(
-    hintText: hint,
-    filled: true,
-    fillColor: Colors.white,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide.none,
-    ),
-  );
-
-  void _save() {
-    setState(() => _showSaved = true);
+    );
   }
-}
 
-class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(14),
-    child: Container(
-      width: 77,
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 5),
-      decoration: BoxDecoration(
-        color: selected ? const Color(0xFFFFE3EA) : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: selected ? _pink : const Color(0xFFF3E8EB)),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            icon,
-            size: 20,
-            color: selected ? _pink : const Color(0xFF79737A),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              color: selected ? _pink : Colors.black87,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
-            ),
-          ),
-        ],
-      ),
+  Widget _loadError(String error) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(error),
+        TextButton(
+          onPressed: () =>
+              ref.invalidate(expenseByIdProvider(widget.expenseId!)),
+          child: const Text('Thử lại'),
+        ),
+      ],
     ),
   );
-}
 
-class _FormLabel extends StatelessWidget {
-  const _FormLabel({required this.label, required this.child});
-  final String label;
-  final Widget child;
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        label,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+  Future<void> _pickDateTime() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _spentAt,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_spentAt),
+    );
+    if (time == null) return;
+    setState(
+      () => _spentAt = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
       ),
-      const SizedBox(height: 7),
-      child,
-    ],
-  );
+    );
+  }
+
+  Future<void> _save() async {
+    final amount = int.tryParse(
+      _amount.text.trim().replaceAll('.', '').replaceAll(',', ''),
+    );
+    if (amount == null || amount <= 0) {
+      setState(() => _error = 'Vui lòng nhập số tiền VND hợp lệ.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final input = ExpenseInput(
+        amount: amount,
+        note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+        category: _category,
+        spentAt: _spentAt.toUtc(),
+      );
+      final actions = ref.read(expenseActionsProvider);
+      if (widget.expenseId == null) {
+        await actions.create(input);
+      } else {
+        await actions.update(widget.expenseId!, input);
+      }
+      if (mounted) context.pop();
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 }

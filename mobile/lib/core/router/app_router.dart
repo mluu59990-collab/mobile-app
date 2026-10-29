@@ -9,6 +9,7 @@ import '../../features/expense/pages/add_expense_page.dart';
 import '../../features/settings/pages/settings_page.dart';
 import '../../features/splash/pages/splash_page.dart';
 import '../../features/welcome/pages/welcome_page.dart';
+import '../../features/budget/pages/budget_page.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final session = ref.watch(authSessionProvider);
@@ -31,6 +32,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/expense/new',
         builder: (context, state) => const AddExpensePage(),
       ),
+      GoRoute(
+        path: '/expense/:id/edit',
+        builder: (context, state) =>
+            AddExpensePage(expenseId: state.pathParameters['id']),
+      ),
+      GoRoute(path: '/budget', builder: (context, state) => const BudgetPage()),
+      GoRoute(
+        path: '/expense/:id/edit',
+        builder: (context, state) =>
+            AddExpensePage(expenseId: state.pathParameters['id']),
+      ),
+      GoRoute(path: '/budget', builder: (context, state) => const BudgetPage()),
+      GoRoute(
+        path: '/expense/:id/edit',
+        builder: (context, state) =>
+            AddExpensePage(expenseId: state.pathParameters['id']),
+      ),
+      GoRoute(path: '/budget', builder: (context, state) => const BudgetPage()),
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsPage(),

@@ -68,6 +68,7 @@ Backend đi theo luồng `handler -> service -> repository`. Handler không gọ
 ### API
 - Mọi route nằm dưới `/api/v1`.
 - Trả JSON; lỗi theo dạng `{"error": {"code": "...", "message": "..."}}`.
+- Truy vấn tháng chi tiêu/báo cáo nhận `tz` IANA tùy chọn (mặc định UTC); biên tháng và ngày báo cáo theo múi giờ đó, dữ liệu vẫn lưu UTC.
 - Route cần đăng nhập dùng middleware JWT. Access token ngắn hạn, refresh token dài hạn và có thể thu hồi.
 - Không bao giờ trả `password_hash` hay token của người dùng khác.
 
@@ -88,6 +89,7 @@ Backend đi theo luồng `handler -> service -> repository`. Handler không gọ
 ### Bảo mật
 - Secret (JWT secret, Google/Facebook client ID và secret, key R2, key LLM) đọc từ biến môi trường, không commit. Giữ `.env.example` không chứa giá trị thật.
 - Ảnh hóa đơn là dữ liệu cá nhân: kiểm tra loại và dung lượng file khi upload, chỉ chủ sở hữu mới truy cập được.
+- Ảnh dùng R2 private; DB lưu `image_key` (cột legacy `image_url` được giữ nhưng không dùng), còn `image_url` API là presigned URL tạm thời; không log URL ký hoặc credentials.
 
 ## Lệnh thường dùng
 

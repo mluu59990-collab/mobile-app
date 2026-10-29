@@ -7,6 +7,7 @@ import '../network/dio_client.dart';
 import '../storage/token_storage.dart';
 import '../storage/app_launch_storage.dart';
 import '../../features/auth/data/auth_repository.dart';
+import '../timezone/device_timezone.dart';
 import 'auth_session.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
@@ -26,6 +27,10 @@ final appLaunchStorageProvider = Provider<AppLaunchStorage>(
 );
 
 final loggerProvider = Provider<Logger>((ref) => Logger());
+
+final deviceTimezoneProvider = Provider<DeviceTimezone>(
+  (ref) => const DeviceTimezone('UTC'),
+);
 
 final dioProvider = Provider<Dio>(
   (ref) => createDioClient(

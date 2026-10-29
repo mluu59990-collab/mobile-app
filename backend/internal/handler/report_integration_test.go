@@ -55,6 +55,7 @@ func TestMonthlyReportIsUserScopedAndAggregatedPostgres(t *testing.T) {
 		{ID: uuid.NewString(), UserID: users[0].ID, Amount: 900, SpentAt: time.Date(2025, 4, 30, 23, 59, 59, 0, time.UTC)},
 		{ID: uuid.NewString(), UserID: users[0].ID, Amount: 700, SpentAt: time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)},
 		{ID: uuid.NewString(), UserID: users[1].ID, Amount: 10000, Category: &food, SpentAt: time.Date(2025, 5, 15, 10, 0, 0, 0, time.UTC)},
+		{ID: uuid.NewString(), UserID: users[0].ID, Amount: 1234, SpentAt: time.Date(2026, 10, 31, 17, 30, 0, 0, time.UTC)},
 	}
 	for i := range expenses {
 		if err := db.WithContext(ctx).Create(&expenses[i]).Error; err != nil {
@@ -73,8 +74,12 @@ func TestMonthlyReportIsUserScopedAndAggregatedPostgres(t *testing.T) {
 		}
 		return token
 	}
-	request := func(userID, month string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/reports/monthly?month="+month, nil)
+	request := func(userID, month, timezone string) *httptest.ResponseRecorder {
+		path := "/api/v1/reports/monthly?month=" + month
+		if timezone != "" {
+			path += "&tz=" + timezone
+		}
+		req := httptest.NewRequest(http.MethodGet, path, nil)
 		if userID != "" {
 			req.Header.Set("Authorization", "Bearer "+access(userID))
 		}
@@ -83,7 +88,7 @@ func TestMonthlyReportIsUserScopedAndAggregatedPostgres(t *testing.T) {
 		return response
 	}
 
-	userA := request(users[0].ID, "2025-05")
+	userA := request(users[0].ID, "2025-05", "")
 	if userA.Code != http.StatusOK {
 		t.Fatalf("user A report returned %d: %s", userA.Code, userA.Body.String())
 	}
@@ -112,7 +117,7 @@ func TestMonthlyReportIsUserScopedAndAggregatedPostgres(t *testing.T) {
 		t.Fatalf("wrong per-day totals: %+v", report.ByDay)
 	}
 
-	userB := request(users[1].ID, "2025-05")
+	userB := request(users[1].ID, "2025-05", "")
 	if userB.Code != http.StatusOK {
 		t.Fatalf("user B report returned %d: %s", userB.Code, userB.Body.String())
 	}
@@ -125,10 +130,35 @@ func TestMonthlyReportIsUserScopedAndAggregatedPostgres(t *testing.T) {
 	if bReport.TotalAmount != 10000 || bReport.TotalAmount == report.TotalAmount {
 		t.Fatalf("user B report is mixed with user A data: %+v", bReport)
 	}
-	if got := request(users[0].ID, "2025-13"); got.Code != http.StatusBadRequest {
+	if got := request(users[0].ID, "2025-13", ""); got.Code != http.StatusBadRequest {
 		t.Fatalf("invalid month returned %d: %s", got.Code, got.Body.String())
 	}
-	if got := request("", "2025-05"); got.Code != http.StatusUnauthorized {
+	if got := request("", "2025-05", ""); got.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated report returned %d", got.Code)
+	}
+	checkBoundary := func(month, timezone, wantDay string) {
+		t.Helper()
+		got := request(users[0].ID, month, timezone)
+		if got.Code != http.StatusOK {
+			t.Fatalf("boundary report returned %d: %s", got.Code, got.Body.String())
+		}
+		var result struct {
+			TotalAmount int64 `json:"total_amount"`
+			ByDay       []struct {
+				Date        string `json:"date"`
+				TotalAmount int64  `json:"total_amount"`
+			} `json:"by_day"`
+		}
+		if err := json.Unmarshal(got.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.TotalAmount != 1234 || len(result.ByDay) != 1 || result.ByDay[0].Date != wantDay || result.ByDay[0].TotalAmount != 1234 {
+			t.Fatalf("unexpected timezone boundary aggregation for month=%s tz=%s: %+v", month, timezone, result)
+		}
+	}
+	checkBoundary("2026-11", "Asia%2FHo_Chi_Minh", "2026-11-01")
+	checkBoundary("2026-10", "", "2026-10-31")
+	if got := request(users[0].ID, "2026-11", "Not%2FA_Timezone"); got.Code != http.StatusBadRequest || !strings.Contains(got.Body.String(), `"error"`) {
+		t.Fatalf("invalid timezone should return error envelope 400, got %d: %s", got.Code, got.Body.String())
 	}
 }
